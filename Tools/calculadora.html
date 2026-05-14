@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Calculadora Avanzada</title>
+<style>
+body{
+  font-family: Arial, sans-serif;
+  background:#111;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
+}
+.calculadora{
+  background:#222;
+  padding:20px;
+  border-radius:15px;
+  width:340px;
+  box-shadow:0 0 20px rgba(0,0,0,0.5);
+}
+#display{
+  width:100%;
+  height:60px;
+  font-size:24px;
+  margin-bottom:10px;
+  text-align:right;
+  padding:10px;
+}
+.buttons{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:8px;
+}
+button{
+  padding:15px;
+  font-size:16px;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+}
+button:hover{
+  background:#444;
+  color:white;
+}
+.op{
+  background:#ff9800;
+}
+.eq{
+  background:#4caf50;
+  color:white;
+  grid-column:span 2;
+}
+.func{
+  background:#2196f3;
+  color:white;
+}
+</style>
+</head>
+<body>
+
+<div class="calculadora">
+  <input id="display" type="text" readonly>
+  <div class="buttons">
+    <button onclick="add('(')">(</button>
+    <button onclick="add(')')">)</button>
+    <button onclick="add('%')">%</button>
+    <button onclick="clearDisplay()">C</button>
+
+    <button onclick="add('7')">7</button>
+    <button onclick="add('8')">8</button>
+    <button onclick="add('9')">9</button>
+    <button onclick="add('/')" class="op">/</button>
+
+    <button onclick="add('4')">4</button>
+    <button onclick="add('5')">5</button>
+    <button onclick="add('6')">6</button>
+    <button onclick="add('*')" class="op">*</button>
+
+    <button onclick="add('1')">1</button>
+    <button onclick="add('2')">2</button>
+    <button onclick="add('3')">3</button>
+    <button onclick="add('-')" class="op">-</button>
+
+    <button onclick="add('0')">0</button>
+    <button onclick="add('.')">.</button>
+    <button onclick="add('+')" class="op">+</button>
+    <button onclick="calc()" class="eq">=</button>
+
+    <button onclick="sqrt()" class="func">√</button>
+    <button onclick="powCustom()" class="func">xʸ</button>
+    <button onclick="fractionCustom()" class="func">a/b</button>
+    <button onclick="toPercent()" class="func">%→num</button>
+  </div>
+</div>
+
+<script>
+let display = document.getElementById('display');
+
+function add(value){
+  display.value += value;
+}
+
+function clearDisplay(){
+  display.value = '';
+}
+
+function calc(){
+  try{
+    display.value = eval(display.value);
+  } catch{
+    display.value = 'Error';
+  }
+}
+
+function sqrt(){
+  display.value = Math.sqrt(eval(display.value));
+}
+
+// Potencia con dos números
+function powCustom(){
+  let base = prompt("Introduce la base:");
+  let exp = prompt("Introduce el exponente:");
+  if(base !== null && exp !== null){
+    display.value = Math.pow(parseFloat(base), parseFloat(exp));
+  }
+}
+
+// Fracción con dos números
+function fractionCustom(){
+  let num = prompt("Introduce el numerador:");
+  let den = prompt("Introduce el denominador:");
+  if(num !== null && den !== null){
+    display.value = parseFloat(num) / parseFloat(den);
+  }
+}
+
+function toPercent(){
+  display.value = eval(display.value) / 100;
+}
+</script>
+
+</body>
+</html>
