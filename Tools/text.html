@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Editor de texto simple</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      height: 100vh;
+      background: #1e1e1e;
+      color: white;
+    }
+
+    .toolbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 50px;
+      background: #2b2b2b;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 10px;
+      box-sizing: border-box;
+    }
+
+    button {
+      background: #444;
+      color: white;
+      border: none;
+      padding: 6px 10px;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+
+    button:hover {
+      background: #666;
+    }
+
+    textarea {
+      flex: 1;
+      margin-top: 50px;
+      width: 100%;
+      height: calc(100vh - 50px);
+      border: none;
+      outline: none;
+      resize: none;
+      padding: 15px;
+      font-size: 16px;
+      background: #1e1e1e;
+      color: #00ff9d;
+    }
+
+    .status {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      font-size: 12px;
+      opacity: 0.7;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="toolbar">
+    <button onclick="newFile()">Nuevo</button>
+    <button onclick="saveFile()">Guardar</button>
+    <button onclick="loadFile()">Abrir</button>
+    <button onclick="clearText()">Limpiar</button>
+  </div>
+
+  <textarea id="editor" placeholder="Escribe aquí tu texto..."></textarea>
+
+  <div class="status" id="status">Listo</div>
+
+  <script>
+    const editor = document.getElementById('editor');
+    const status = document.getElementById('status');
+
+    function newFile() {
+      editor.value = '';
+      status.textContent = 'Nuevo archivo creado';
+    }
+
+    function saveFile() {
+      const blob = new Blob([editor.value], { type: 'text/plain' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'archivo.txt';
+      a.click();
+      status.textContent = 'Archivo guardado';
+    }
+
+    function loadFile() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.txt';
+      input.onchange = e => {
+        const file = e.target.files[0];
+        const reader = new FileReader();
+        reader.onload = event => {
+          editor.value = event.target.result;
+          status.textContent = 'Archivo cargado';
+        };
+        reader.readAsText(file);
+      };
+      input.click();
+    }
+
+    function clearText() {
+      editor.value = '';
+      status.textContent = 'Texto limpiado';
+    }
+  </script>
+
+</body>
+</html>

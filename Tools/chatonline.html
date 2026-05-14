@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Chat P2P Funcional</title>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<style>
+body { font-family: Arial; background: #0f172a; color: white; text-align: center; }
+input, button { padding: 10px; margin: 5px; border-radius: 8px; border: none; }
+#chat { display: none; }
+#messages { height: 300px; overflow-y: auto; border: 1px solid #555; margin: 10px; padding: 10px; border-radius:10px; }
+button { cursor: pointer; background: #2563eb; color: white; }
+</style>
+</head>
+<body>
+
+<h1>⚡ Chat P2P (ARREGLADO)</h1>
+
+<div id="login">
+  <input id="name" placeholder="Tu nombre">
+  <input id="room" placeholder="Palabra (igual en ambos)">
+  <button onclick="joinChat()">Entrar</button>
+</div>
+
+<div id="chat">
+  <div id="status">🔄 Conectando...</div>
+  <div id="messages"></div>
+  <input id="msg" placeholder="Mensaje">
+  <button onclick="sendMessage()">Enviar</button>
+</div>
+
+<script>
+let peer;
+let conn;
+let name = "";
+let room = "";
+
+function joinChat() {
+  name = document.getElementById("name").value;
+  room = document.getElementById("room").value;
+
+  if (!name || !room) return alert("Completa todo");
+
+  // Usamos la palabra como ID principal (HOST)
+  peer = new Peer(room);
+
+  peer.on('open', id => {
+    document.getElementById("status").innerText = "👑 Eres el HOST";
+  });
+
+  peer.on('error', err => {
+    // Si falla, significa que ya existe → conectar como cliente
+    if (err.type === 'unavailable-id') {
+      peer = new Peer();
+
+      peer.on('open', () => {
+        conn = peer.connect(room);
+
+        conn.on('open', () => {
+          setupConnection();
+        });
+      });
+    }
+  });
+
+  peer.on('connection', connection => {
+    conn = connection;
+    setupConnection();
+  });
+
+  document.getElementById("login").style.display = "none";
+  document.getElementById("chat").style.display = "block";
+}
+
+function setupConnection() {
+  document.getElementById("status").innerText = "🟢 Conectado";
+
+  conn.on('data', data => {
+    addMessage(data);
+  });
+}
+
+function sendMessage() {
+  const input = document.getElementById("msg");
+  const text = input.value;
+  if (!text) return;
+
+  const message = name + ": " + text;
+  addMessage(message);
+
+  if (conn && conn.open) {
+    conn.send(message);
+  }
+
+  input.value = "";
+}
+
+function addMessage(msg) {
+  const div = document.createElement("div");
+  div.textContent = msg;
+  document.getElementById("messages").appendChild(div);
+  div.scrollIntoView();
+}
+</script>
+
+</body>
+</html>

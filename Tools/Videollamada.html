@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Videollamada P2P PRO Estable</title>
+
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+<style>
+body { font-family: Arial; background:#0b1220; color:white; text-align:center; }
+input, button { padding:10px; margin:5px; border:none; border-radius:8px; }
+#chat { display:none; }
+video { width:45%; margin:10px; border-radius:12px; background:black; }
+button { cursor:pointer; background:#2563eb; color:white; }
+#status { margin:10px; font-weight:bold; }
+</style>
+</head>
+<body>
+
+<h1>🔥 Videollamada P2P PRO (estable)</h1>
+
+<div id="login">
+  <input id="room" placeholder="Código de sala">
+  <button onclick="start()">Entrar</button>
+</div>
+
+<div id="chat">
+  <div id="status">🔄 Iniciando...</div>
+  <div>
+    <video id="localVideo" autoplay muted playsinline></video>
+    <video id="remoteVideo" autoplay playsinline></video>
+  </div>
+</div>
+
+<script>
+let peer;
+let call;
+let localStream;
+let room;
+let isHost = false;
+
+const config = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun.cloudflare.com:3478" }
+  ]
+};
+
+async function start() {
+  room = document.getElementById("room").value;
+  if (!room) return alert("Escribe un código");
+
+  document.getElementById("login").style.display = "none";
+  document.getElementById("chat").style.display = "block";
+
+  localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  document.getElementById("localVideo").srcObject = localStream;
+
+  peer = new Peer(room, { config });
+
+  peer.on("open", () => {
+    isHost = true;
+    document.getElementById("status").innerText = "👑 Host activo (esperando conexión...)";
+  });
+
+  peer.on("error", (err) => {
+    if (err.type === "unavailable-id") {
+      isHost = false;
+
+      peer = new Peer(undefined, { config });
+
+      peer.on("open", () => {
+        document.getElementById("status").innerText = "🔄 Conectando a sala...";
+        tryConnect();
+      });
+    }
+  });
+
+  peer.on("call", (incoming) => {
+    incoming.answer(localStream);
+
+    incoming.on("stream", (remoteStream) => {
+      document.getElementById("remoteVideo").srcObject = remoteStream;
+    });
+
+    call = incoming;
+    document.getElementById("status").innerText = "🟢 En llamada";
+  });
+}
+
+function tryConnect() {
+  if (!peer || isHost) return;
+
+  const attempt = () => {
+    try {
+      call = peer.call(room, localStream);
+
+      call.on("stream", (remoteStream) => {
+        document.getElementById("remoteVideo").srcObject = remoteStream;
+        document.getElementById("status").innerText = "🟢 Conectado";
+      });
+
+      call.on("error", () => {
+        setTimeout(attempt, 2000);
+      });
+
+    } catch (e) {
+      setTimeout(attempt, 2000);
+    }
+  };
+
+  attempt();
+}
+</script>
+
+</body>
+</html>
