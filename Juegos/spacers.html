@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Vampire Survivor Clon</title>
+<style>
+  body { margin:0; background:#111; overflow:hidden; font-family:Arial, sans-serif; }
+  canvas { display:block; margin:auto; background:#222; cursor:pointer; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+canvas.width = 640;
+canvas.height = 480;
+
+// --- Jugador ---
+const player = { x:320, y:240, size:32, speed:3, color:'lime', attackRadius:40, damageMultiplier:1, xpDropMultiplier:1 };
+
+// --- Proyectiles ---
+let projectilesUnlocked = false;
+let projectiles = [];
+let projectileDamage = 2;
+let projectileAmount = 1;
+let projectileDurability = 1;
+
+// --- Láser Orbital ---
+let laserUnlocked = false;
+let laserAngle = 0;
+let laserLength = 90;
+let laserSpeed = 0.03;
+let laserDamage = 5;
+const LASER_HIT_COOLDOWN = 300; // ms
+
+/* ================= DISPLAY DE MEJORAS ================= */
+const displayUpgrades = {
+  radio: {},        // daño, alcance
+  proyectiles: {},  // daño, cantidad, durabilidad
+  laser: {},        // daño, alcance, velocidad
+  generales: {}     // velocidad
+};
+
+const displayColors = {
+  radio: '#a855f7',
+  proyectiles: '#facc15',
+  laser: '#22d3ee',
+  generales: '#4ade80'
+};
+
+// --- Controles ---
+const keys = {};
+document.addEventListener('keydown', e => keys[e.key] = true);
+document.addEventListener('keyup', e => keys[e.key] = false);
+
+// --- Enemigos ---
+let enemies = [];
+let dyingEnemies = [];
+let spawnTimer = 0;
+const enemyTypes = [
+  {size:24, color:'red', baseHp:1, speed:1.5, points:10},
+  {size:20, color:'orange', baseHp:2, speed:2, points:15},
+  {size:28, color:'purple', baseHp:3, speed:1, points:20}
+];
+
+// --- XP y niveles ---
+let xp = 0;
+let displayedXP = 0;
+let level = 1;
+let xpToLevel = 50;
+
+// --- Power-ups ---
+let powerUps = [];
+
+// --- Imán ---
+let magnetActive = false;
+let magnetTimer = 0;
+const MAGNET_DURATION = 600; // 10 segundos
+let magnetSpawnTimer = 0;
+
+// --- Puntaje ---
+let score = 0;
+
+// --- Fondo ---
+let stars = [];
+for(let i=0;i<100;i++){
+  stars.push({x:Math.random()*canvas.width, y:Math.random()*canvas.height, size:Math.random()*2+1});
+}
+
+// --- Partículas ---
+let particles = [];
+function spawnParticles(x, y, color, count=10){
+  for(let i=0;i<count;i++){
+    particles.push({
+      x, y,
+      vx: (Math.random()-0.5)*4,
+      vy: (Math.random()-0.5)*4,
+      size: Math.random()*3 + 2,
+      color,
+      life: 30 + Math.random()*20
+    });
+  }
+}
+function updateParticles(){
+  particles.forEach((p,i)=>{
+    p.x += p.vx; p.y += p.vy;
+    p.life--; if(p.life<=0) particles.splice(i,1);
+  });
+}
+function drawParticles(){
+  particles.forEach(p=>{
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.life/50;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  });
+}
+
+// --- Sistema de mejoras ---
+let levelUpOptions = [];
+let showLevelUpMenu = false;
+let hoverIndex = -1;
+let menuAnimation = 0;
+
+const rarityColors = {
+  'Común':'gray',
+  'Rara':'blue',
+  'Epica':'purple',
+  'Legendaria':'orange',
+  'Desbloqueo de Arma':'darkcyan'
+};
+const rarityProbabilities = {
+  'Común':0.4,
+  'Rara':0.3,
+  'Epica':0.2,
+  'Legendaria':0.09,
+  'Desbloqueo de Arma':0.05
+};
+const allUpgrades = [
+  {name:'Daño de proyectil', rarity:'Común', description:'Aumenta el daño de los proyectiles.'},
+  {name:'Velocidad', rarity:'Común', description:'Incrementa la velocidad del jugador.'},
+  {name:'Daño de área', rarity:'Rara', description:'Incrementa el daño del radio de ataque del jugador.'},
+  {name:'Cantidad de XP', rarity:'Epica', description:'Aumenta el XP que sueltan los enemigos.'},
+  {name:'Durabilidad de proyectiles', rarity:'Epica', description:'Aumenta la cantidad de rebotes de los proyectiles.'},
+  {name:'Número de proyectiles', rarity:'Legendaria', description:'Aumenta la cantidad máxima de proyectiles simultáneos.'},
+  {name:'Tamaño del área', rarity:'Legendaria', description:'Aumenta el radio de ataque del jugador.'},
+  {name:'Desbloqueo de proyectiles', rarity:'Desbloqueo de Arma', description:'Desbloquea los proyectiles como arma.'},
+  {name:'Velocidad del láser', rarity:'Rara', description:'El láser gira más rápido alrededor del jugador.'},
+  {name:'Daño del láser', rarity:'Rara', description:'Aumenta el daño del láser.'},
+  {name:'Alcance del láser', rarity:'Epica', description:'Aumenta la longitud del láser.'},
+  {name:'Desbloqueo de láser', rarity:'Desbloqueo de Arma', description:'Desbloquea el láser orbital.'}
+];
+
+// --- Elegir mejoras ---
+function offerLevelUpOptions(){
+  let possibleUpgrades = [];
+  allUpgrades.forEach(u=>{
+    if(u.name.includes('proyectil') && u.rarity!=='Desbloqueo de Arma' && !projectilesUnlocked) return;
+    if(u.name==='Desbloqueo de proyectiles' && projectilesUnlocked) return;
+    if(u.name.includes('láser') && u.rarity!=='Desbloqueo de Arma' && !laserUnlocked) return;
+    if(u.name==='Desbloqueo de láser' && laserUnlocked) return;
+    if(Math.random()<rarityProbabilities[u.rarity]) possibleUpgrades.push(u);
+  });
+  const backup = allUpgrades.filter(u=>!possibleUpgrades.includes(u) &&
+    !(u.name.includes('proyectil') && !projectilesUnlocked) &&
+    !(u.name==='Desbloqueo de proyectiles' && projectilesUnlocked) &&
+    !(u.name.includes('láser') && !laserUnlocked) &&
+    !(u.name==='Desbloqueo de láser' && laserUnlocked));
+  while(possibleUpgrades.length<3 && backup.length>0){
+    const idx = Math.floor(Math.random()*backup.length);
+    possibleUpgrades.push(backup.splice(idx,1)[0]);
+  }
+  levelUpOptions=[];
+  while(levelUpOptions.length<3 && possibleUpgrades.length>0){
+    const idx = Math.floor(Math.random()*possibleUpgrades.length);
+    levelUpOptions.push(possibleUpgrades.splice(idx,1)[0]);
+  }
+  showLevelUpMenu = true;
+  menuAnimation = 0;
+}
+
+// --- Hover y click ---
+canvas.addEventListener('mousemove', e=>{
+  if(!showLevelUpMenu) return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  hoverIndex = -1;
+  const menuMargin = 40;
+  const menuHeight = canvas.height - menuMargin*2;
+  const startY = menuMargin + 60;
+  const spacing = 20;
+  const optionCount = levelUpOptions.length;
+  const blockHeight = (menuHeight - 80 - spacing*(optionCount)) / optionCount;
+  const blockWidth = canvas.width - menuMargin*2 - 40;
+  const blockStartX = menuMargin + 20;
+  for(let i=0; i<optionCount; i++){
+    const blockY = startY + i*(blockHeight + spacing) + (1-menuAnimation)*-200;
+    if(mx >= blockStartX && mx <= blockStartX + blockWidth && my >= blockY && my <= blockY + blockHeight){
+      hoverIndex = i;
+    }
+  }
+});
+canvas.addEventListener('click', e=>{
+  if(!showLevelUpMenu || hoverIndex===-1) return;
+  applyUpgrade(levelUpOptions[hoverIndex]);
+  showLevelUpMenu=false;
+  levelUpOptions=[];
+});
+
+function registerUpgrade(section, name, value, isPercent = false){
+  if(!displayUpgrades[section][name]){
+    displayUpgrades[section][name] = {
+      level: 1,
+      value: value
+    };
+  } else {
+    displayUpgrades[section][name].level++;
+    displayUpgrades[section][name].value += value;
+  }
+}
+
+// --- Aplicar mejoras ---
+function applyUpgrade(u){
+  switch(u.name){
+
+    case 'Daño de proyectil':
+      projectileDamage *= 1.15;
+      registerUpgrade('proyectiles', 'Daño Proyectil', 15, true);
+      break;
+
+    case 'Velocidad':
+      player.speed += 1;
+      registerUpgrade('generales', 'Velocidad', 10, true);
+      break;
+
+    case 'Daño de área':
+      player.damageMultiplier *= 1.15;
+      registerUpgrade('radio', 'Daño de Área', 15, true);
+      break;
+
+    case 'Cantidad de XP':
+      player.xpDropMultiplier *= 1.2;
+      registerUpgrade('generales', 'Cantidad XP', 20, true);
+      break;
+
+    case 'Durabilidad de proyectiles':
+      projectileDurability += 1;
+      registerUpgrade('proyectiles', 'Durabilidad', 1);
+      break;
+
+    case 'Número de proyectiles':
+      projectileAmount += 1;
+      registerUpgrade('proyectiles', 'Cantidad', 1);
+      break;
+
+    case 'Tamaño del área':
+      player.attackRadius += 10;
+      registerUpgrade('radio', 'Alcance Área', 10);
+      break;
+
+    case 'Desbloqueo de proyectiles':
+      projectilesUnlocked = true;
+      // NO se muestra en el display
+      break;
+
+    case 'Velocidad del láser':
+      laserSpeed *= 1.15;
+      registerUpgrade('laser', 'Velocidad Láser', 15, true);
+      break;
+
+    case 'Daño del láser':
+      laserDamage *= 1.2;
+      registerUpgrade('laser', 'Daño Láser', 20, true);
+      break;
+
+    case 'Alcance del láser':
+      laserLength += 20;
+      registerUpgrade('laser', 'Alcance Láser', 20);
+      break;
+
+    case 'Desbloqueo de láser':
+      laserUnlocked = true;
+      // NO se muestra en el display
+      break;
+  }
+}
+
+// --- Spawn enemigo ---
+function spawnEnemy(){
+  const edge=Math.floor(Math.random()*4);
+  let x,y;
+  if(edge===0){ x=0; y=Math.random()*canvas.height; }
+  if(edge===1){ x=canvas.width; y=Math.random()*canvas.height; }
+  if(edge===2){ x=Math.random()*canvas.width; y=0; }
+  if(edge===3){ x=Math.random()*canvas.width; y=canvas.height; }
+  const type=enemyTypes[Math.floor(Math.random()*enemyTypes.length)];
+  const hp = type.baseHp + Math.floor(score/100);
+  enemies.push({x,y,...type,maxHp:hp,hp:hp,lastLaserHit:0});
+}
+
+// --- Kill enemy ---
+function killEnemy(e){
+  dyingEnemies.push({...e, life:30, shrink:1});
+  spawnParticles(e.x+e.size/2,e.y+e.size/2,e.color,15);
+  const xpAmount = Math.floor(e.points*player.xpDropMultiplier);
+  spawnXP(e.x,e.y,xpAmount);
+  enemies.splice(enemies.indexOf(e),1);
+}
+
+// --- Update y Draw Dying Enemies ---
+function updateDyingEnemies(){ dyingEnemies.forEach((e,i)=>{ e.life--; e.shrink*=0.9; if(e.life<=0) dyingEnemies.splice(i,1); }); }
+function drawDyingEnemies(){ dyingEnemies.forEach(e=>{ ctx.fillStyle=e.color; const s=e.size*e.shrink; ctx.fillRect(e.x+(e.size-s)/2,e.y+(e.size-s)/2,s,s); }); }
+
+// --- Spawn XP ---
+function spawnXP(x,y,amount){ powerUps.push({x,y,size:10,color:'cyan',duration:300,type:'xp',amount}); }
+
+// --- Spawn Imán ---
+function spawnMagnet(){
+  powerUps.push({x: Math.random()*(canvas.width-20)+10, y: Math.random()*(canvas.height-20)+10, size:16, color:'magenta', type:'magnet', duration:9999});
+}
+
+// --- Update PowerUps ---
+function updatePowerUps(){
+  powerUps.forEach((p,i)=>{
+    const dx = player.x + player.size/2 - (p.x + p.size/2);
+    const dy = player.y + player.size/2 - (p.y + p.size/2);
+    const dist = Math.hypot(dx, dy);
+
+    if(magnetActive && p.type==='xp'){
+      const speed = 6;
+      p.x += dx/dist*speed;
+      p.y += dy/dist*speed;
+    }
+
+    if(dist < player.size/2 + p.size/2){
+      if(p.type==='xp'){
+        xp += p.amount;
+        displayedXP = xp;
+        spawnParticles(player.x+player.size/2,player.y+player.size/2,'cyan',10);
+        while(xp>=xpToLevel){ xp-=xpToLevel; displayedXP=xp; level++; xpToLevel=Math.floor(xpToLevel*1.2); offerLevelUpOptions(); }
+      }
+      if(p.type==='magnet'){ magnetActive=true; magnetTimer=MAGNET_DURATION; }
+      powerUps.splice(i,1);
+    }
+
+    if(p.type!=='magnet'){ p.duration--; if(p.duration<=0) powerUps.splice(i,1); }
+  });
+
+  if(magnetActive){ magnetTimer--; if(magnetTimer<=0) magnetActive=false; }
+
+  magnetSpawnTimer++;
+  if(magnetSpawnTimer>900){ spawnMagnet(); magnetSpawnTimer=0; }
+}
+
+// --- Draw PowerUps ---
+function drawPowerUps(){
+  powerUps.forEach(p=>{
+    ctx.fillStyle=p.color;
+    ctx.beginPath();
+    ctx.arc(p.x+p.size/2, p.y+p.size/2, p.size/2,0,Math.PI*2);
+    ctx.fill();
+    if(p.type==='magnet'){
+      ctx.fillStyle='white';
+      ctx.font='10px Arial';
+      ctx.fillText('IMÁN', p.x-8, p.y-5);
+    }
+  });
+}
+
+// --- Spawn y Update Proyectiles ---
+function spawnProjectile(){
+  if(!projectilesUnlocked) return;
+  if(projectiles.length>=projectileAmount) return;
+  projectiles.push({x:player.x+player.size/2,y:player.y+player.size/2,damage:projectileDamage,durability:projectileDurability,hitEnemies:[]});
+}
+function updateProjectiles(){
+  projectiles.forEach((p,i)=>{
+    if(enemies.length===0) return;
+    let closest=null, minDist=Infinity;
+    enemies.forEach(e=>{
+      if(p.hitEnemies.includes(e)) return;
+      const dx=e.x+e.size/2-p.x, dy=e.y+e.size/2-p.y;
+      const dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist<minDist){ minDist=dist; closest=e; }
+    });
+    if(!closest) return;
+    const dx=closest.x+closest.size/2-p.x, dy=closest.y+closest.size/2-p.y;
+    const dist=Math.sqrt(dx*dx+dy*dy), speed=6;
+    p.x+=dx/dist*speed; p.y+=dy/dist*speed;
+    if(dist<closest.size/2){
+      closest.hp-=p.damage;
+      p.durability--; p.hitEnemies.push(closest);
+      spawnParticles(closest.x+closest.size/2, closest.y+closest.size/2,'yellow',8);
+      if(closest.hp<=0) killEnemy(closest);
+      if(p.durability<=0) projectiles.splice(i,1);
+    }
+    if(p.x<0||p.x>canvas.width||p.y<0||p.y>canvas.height) projectiles.splice(i,1);
+  });
+}
+
+// --- Update Enemigos ---
+function updateEnemies(){
+  enemies.forEach((e,i)=>{
+    const dx=player.x-e.x, dy=player.y-e.y;
+    const dist=Math.sqrt(dx*dx+dy*dy);
+    e.x+=(dx/dist)*e.speed*0.5; e.y+=(dy/dist)*e.speed*0.5;
+    if(dist<player.attackRadius){ e.hp-=player.damageMultiplier; if(e.hp<=0) killEnemy(e); }
+    if(dist<player.size/2+e.size/2){ alert("Game Over! Puntaje: "+score); resetGame(); }
+  });
+}
+
+// --- Draw Enemigos ---
+function drawEnemies(){
+  enemies.forEach(e=>{
+    ctx.fillStyle=e.color; ctx.fillRect(e.x,e.y,e.size,e.size);
+    ctx.fillStyle='black'; ctx.fillRect(e.x,e.y-4,e.size,3);
+    ctx.fillStyle='lime'; ctx.fillRect(e.x,e.y-4,e.size*(e.hp/e.maxHp),3);
+  });
+}
+
+// --- Draw Proyectiles ---
+function drawProjectiles(){ projectiles.forEach(p=>{ ctx.fillStyle='yellow'; ctx.beginPath(); ctx.arc(p.x,p.y,5,0,Math.PI*2); ctx.fill(); }); }
+
+// --- Update Laser ---
+function updateLaser(){
+  if(!laserUnlocked) return;
+  laserAngle+=laserSpeed;
+  const lx=player.x+player.size/2 + Math.cos(laserAngle)*laserLength;
+  const ly=player.y+player.size/2 + Math.sin(laserAngle)*laserLength;
+  enemies.forEach(e=>{
+    const d=Math.hypot(e.x+e.size/2-lx, e.y+e.size/2-ly);
+    if(d<e.size/2 && Date.now()-(e.lastLaserHit||0)>LASER_HIT_COOLDOWN){
+      e.hp -= laserDamage;
+      e.lastLaserHit = Date.now();
+      if(e.hp<=0) killEnemy(e);
+    }
+  });
+}
+
+// --- Reset Game ---
+function resetGame(){
+  enemies=[]; dyingEnemies=[]; powerUps=[]; projectiles=[]; particles=[];
+  score=0; xp=0; displayedXP=0; level=1; xpToLevel=50;
+  player.attackRadius=40; player.damageMultiplier=1; player.speed=3; player.xpDropMultiplier=1;
+  projectilesUnlocked=false; projectileDamage=2; projectileAmount=1; projectileDurability=1;
+  laserUnlocked=false; laserAngle=0; laserLength=90; laserSpeed=0.03; laserDamage=2;
+  player.x=320; player.y=240;
+  magnetActive=false; magnetTimer=0; magnetSpawnTimer=0;
+}
+
+// --- Loop ---
+function loop(){ update(); draw(); requestAnimationFrame(loop); }
+function update(){
+  if(displayedXP<xp) displayedXP+=Math.ceil((xp-displayedXP)/10);
+  if(showLevelUpMenu && menuAnimation<1) menuAnimation += 0.1;
+  if(showLevelUpMenu) return;
+  if(keys['ArrowUp']||keys['w']) player.y-=player.speed;
+  if(keys['ArrowDown']||keys['s']) player.y+=player.speed;
+  if(keys['ArrowLeft']||keys['a']) player.x-=player.speed;
+  if(keys['ArrowRight']||keys['d']) player.x+=player.speed;
+  if(player.x<0) player.x=0;
+  if(player.x>canvas.width-player.size) player.x=canvas.width-player.size;
+  if(player.y<0) player.y=0;
+  if(player.y>canvas.height-player.size) player.y=canvas.height-player.size;
+
+  stars.forEach(s=>{ s.y+=0.5; if(s.y>canvas.height)s.y=0; });
+  spawnTimer++; if(spawnTimer>50){ spawnEnemy(); spawnTimer=0; }
+
+  updateEnemies(); updateProjectiles(); updatePowerUps(); updateParticles(); updateDyingEnemies();
+  updateLaser(); spawnProjectile();
+  score++;
+}
+function draw(){
+  ctx.fillStyle='#222'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  stars.forEach(s=>{ ctx.fillStyle='white'; ctx.fillRect(s.x,s.y,s.size,s.size); });
+
+  if(showLevelUpMenu){
+    ctx.beginPath();
+    ctx.arc(player.x+player.size/2, player.y+player.size/2, 60 + 10*Math.sin(Date.now()/100), 0, Math.PI*2);
+    ctx.fillStyle='rgba(255,255,0,0.2)';
+    ctx.fill();
+  }
+
+  ctx.fillStyle=player.color; ctx.fillRect(player.x,player.y,player.size,player.size);
+  ctx.strokeStyle='lime'; ctx.beginPath();
+  ctx.arc(player.x+player.size/2,player.y+player.size/2,player.attackRadius,0,Math.PI*2);
+  ctx.stroke();
+
+  if(laserUnlocked){
+    ctx.strokeStyle='cyan';
+    ctx.lineWidth=4;
+    ctx.beginPath();
+    ctx.moveTo(player.x+player.size/2,player.y+player.size/2);
+    const lx = player.x + player.size/2 + Math.cos(laserAngle)*laserLength;
+    const ly = player.y + player.size/2 + Math.sin(laserAngle)*laserLength;
+    ctx.lineTo(lx, ly);
+    ctx.stroke();
+  }
+
+  drawEnemies(); drawDyingEnemies(); drawPowerUps(); drawProjectiles(); drawParticles();
+
+  ctx.fillStyle='white'; ctx.font='20px Arial';
+  ctx.fillText(`Puntaje: ${score}`,10,30);
+  ctx.fillText(`Nivel: ${level}`,10,60);
+  ctx.fillText(`XP: ${displayedXP}/${xpToLevel}`,10,90);
+
+  if(magnetActive){
+    ctx.fillStyle='magenta';
+    ctx.font='16px Arial';
+    ctx.fillText('IMÁN ACTIVO',10,110);
+  }
+
+  if(showLevelUpMenu) drawLevelUpMenu();
+
+  drawUpgradeDisplay();
+}
+
+function drawUpgradeDisplay(){
+  let x = canvas.width - 180;
+  let y = canvas.height - 20;
+  const width = 170;
+  const lineHeight = 18;
+
+  Object.keys(displayUpgrades).forEach(section=>{
+    const upgrades = displayUpgrades[section];
+    const keys = Object.keys(upgrades);
+    if(keys.length === 0) return;
+
+    const height = (keys.length + 1) * lineHeight + 8;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.strokeStyle = displayColors[section];
+    ctx.lineWidth = 2;
+
+    ctx.fillRect(x, y - height, width, height);
+    ctx.strokeRect(x, y - height, width, height);
+
+    ctx.fillStyle = displayColors[section];
+    ctx.font = 'bold 12px Arial';
+    ctx.fillText(section.toUpperCase(), x + 6, y - height + 14);
+
+    ctx.font = '11px Arial';
+    keys.forEach((k,i)=>{
+      const u = upgrades[k];
+      const text = u.value
+        ? `${k} ${u.level} (+${u.value}${k.includes('Daño')||k.includes('Velocidad')?'%':''})`
+        : `${k} ${u.level}`;
+
+      ctx.fillText(text, x + 6, y - height + 30 + i * lineHeight);
+    });
+
+    y -= height + 8;
+  });
+}
+
+// --- Interfaz Level Up ---
+function drawLevelUpMenu(){
+  const menuMargin = 40;
+  const menuWidth = canvas.width - menuMargin*2;
+  const menuHeight = canvas.height - menuMargin*2;
+  const startX = menuMargin;
+  const startY = menuMargin;
+  const menuOffsetY = (1-menuAnimation)*-200;
+  ctx.fillStyle='rgba(0,0,0,0.9)';
+  ctx.fillRect(startX, startY + menuOffsetY, menuWidth, menuHeight);
+  ctx.fillStyle='white'; ctx.font='28px Arial';
+  ctx.fillText(`¡Nivel ${level} alcanzado! Elige una mejora:`, canvas.width/2 - 250, startY + 40 + menuOffsetY);
+
+  const optionCount = levelUpOptions.length;
+  const spacing = 20;
+  const availableHeight = menuHeight - 80;
+  const blockHeight = (availableHeight - spacing*(optionCount)) / optionCount;
+  const blockWidth = menuWidth - 40;
+  const blockStartX = startX + 20;
+
+  for(let i=0; i<optionCount; i++){
+    const option = levelUpOptions[i];
+    const blockY = startY + 60 + i*(blockHeight + spacing) + menuOffsetY;
+
+    ctx.fillStyle = rarityColors[option.rarity];
+    ctx.fillRect(blockStartX, blockY, blockWidth, blockHeight);
+
+    if(i===hoverIndex){ ctx.strokeStyle='yellow'; ctx.lineWidth=4; ctx.strokeRect(blockStartX, blockY, blockWidth, blockHeight); }
+
+    ctx.fillStyle='white'; ctx.font='24px Arial';
+    ctx.fillText(option.name, blockStartX + 20, blockY + 30);
+    ctx.font='18px Arial';
+    ctx.fillText(option.rarity, blockStartX + 20, blockY + 60);
+    drawWrappedText(ctx, option.description, blockStartX + 250, blockY + 40, blockWidth - 270, 20);
+  }
+}
+
+// --- Texto envuelto ---
+function drawWrappedText(ctx,text,x,y,maxWidth,lineHeight){
+  const words=text.split(' '); let line='';
+  for(let n=0;n<words.length;n++){
+    const testLine=line+words[n]+' ';
+    const metrics=ctx.measureText(testLine);
+    if(metrics.width>maxWidth && n>0){ ctx.fillText(line,x,y); line=words[n]+' '; y+=lineHeight; }
+    else line=testLine;
+  }
+  ctx.fillText(line,x,y);
+}
+
+loop();
+</script>
+</body>
+</html>

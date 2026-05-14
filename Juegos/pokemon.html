@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Pokemon Hardcore</title>
+
+<style>
+body{font-family:Arial;background:#1e1e1e;color:white;text-align:center;margin:0;}
+.hidden{display:none;}
+#starters{display:flex;justify-content:center;gap:15px;margin-top:20px;}
+.card{width:140px;background:#444;padding:10px;border-radius:10px;cursor:pointer;}
+.card:hover{transform:scale(1.1);}
+button{margin:5px;padding:8px;cursor:pointer;}
+#battleContainer{width:650px;margin:auto;background:#333;padding:15px;border-radius:10px;}
+.pokemon{display:flex;justify-content:space-between;align-items:center;margin:10px;}
+.hp-bar{width:160px;height:12px;background:#555;border-radius:6px;overflow:hidden;}
+.hp-fill{height:100%;width:100%;transition:.3s;}
+.hp-fill.high{background:lime;}
+.hp-fill.mid{background:orange;}
+.hp-fill.low{background:red;}
+#moves{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;}
+#battleConsole{
+height:120px;background:black;color:#0f0;font-size:12px;
+overflow:auto;text-align:left;padding:10px;margin-top:10px;
+/* ===== ANIMACIONES EXTRA (SIN TOCAR TU JUEGO) ===== */
+
+.fadeIn{
+animation:fadeIn .35s ease;
+}
+
+@keyframes fadeIn{
+from{opacity:0; transform:translateY(10px);}
+to{opacity:1; transform:translateY(0);}
+}
+
+.hitFlash{
+animation:hitFlash .25s;
+}
+
+@keyframes hitFlash{
+0%{filter:brightness(1);}
+50%{filter:brightness(2);}
+100%{filter:brightness(1);}
+}
+
+.shake{
+animation:shake .35s;
+}
+
+@keyframes shake{
+0%{transform:translateX(0);}
+25%{transform:translateX(-6px);}
+50%{transform:translateX(6px);}
+75%{transform:translateX(-6px);}
+100%{transform:translateX(0);}
+}
+
+.pop{
+animation:pop .2s ease;
+}
+
+@keyframes pop{
+0%{transform:scale(1);}
+50%{transform:scale(1.1);}
+100%{transform:scale(1);}
+}
+}
+
+/* ================= PRO FX ================= */
+
+.screenShake{
+animation:screenShake .4s;
+}
+
+@keyframes screenShake{
+0%{transform:translate(0,0);}
+20%{transform:translate(-6px,3px);}
+40%{transform:translate(6px,-3px);}
+60%{transform:translate(-6px,-2px);}
+80%{transform:translate(6px,2px);}
+100%{transform:translate(0,0);}
+}
+
+.damageFlash{
+position:relative;
+}
+
+.flash-red{
+animation:flashRed .25s;
+}
+
+.flash-blue{
+animation:flashBlue .25s;
+}
+
+@keyframes flashRed{
+0%{filter:brightness(1);}
+50%{filter:brightness(2) sepia(1) saturate(3);}
+100%{filter:brightness(1);}
+}
+
+@keyframes flashBlue{
+0%{filter:brightness(1);}
+50%{filter:brightness(2) hue-rotate(180deg);}
+100%{filter:brightness(1);}
+}
+
+/* EVOLUCIÓN PRO */
+.evolve{
+animation:evolveFX 1s ease;
+}
+
+@keyframes evolveFX{
+0%{transform:scale(1);filter:brightness(1);}
+30%{transform:scale(1.2);filter:brightness(2);}
+60%{transform:scale(0.9);filter:brightness(3);}
+100%{transform:scale(1);filter:brightness(1);}
+}
+</style>
+</head>
+
+<body>
+<h1>Pokemon Hardcore</h1>
+
+<!-- START -->
+<div id="startMenu">
+  <h2>Elige starter</h2>
+  <div id="starters"></div>
+</div>
+
+<!-- MENU -->
+<div id="mainMenu" class="hidden">
+  <button onclick="startBattle()">Combate</button>
+  <button onclick="openShop()">Tienda</button>
+  <button onclick="openPokemonScreen()">Pokémon</button>
+</div>
+
+<!-- BATTLE -->
+<div id="battleScreen" class="hidden">
+<div id="battleContainer">
+  <div class="pokemon">
+    <div>
+      <p id="enemyName"></p>
+      <div class="hp-bar"><div id="enemyHP" class="hp-fill"></div></div>
+    </div>
+    <img id="enemySprite" width="90">
+  </div>
+
+  <div class="pokemon">
+    <img id="playerSprite" width="90">
+    <div>
+      <p id="playerName"></p>
+      <div class="hp-bar"><div id="playerHP" class="hp-fill"></div></div>
+    </div>
+  </div>
+
+  <div id="moves"></div>
+  <div id="battleConsole"></div>
+</div>
+</div>
+
+<!-- REWARD -->
+<div id="rewardScreen" class="hidden">
+  <h2>Elige Pokémon del rival</h2>
+  <div id="rewardList"></div>
+  <button onclick="skipReward()">Cancelar</button>
+</div>
+
+<!-- POKEMON -->
+<div id="pokemonScreen" class="hidden">
+  <h2>Equipo</h2>
+  <div id="teamList"></div>
+  <h3>🍬 Caramelos: <span id="candyCount"></span></h3>
+  <button onclick="closePokemonScreen()">Volver</button>
+</div>
+
+<!-- SHOP -->
+<div id="shopScreen" class="hidden">
+  <h2>Tienda</h2>
+  <p>💰 Dinero: <span id="moneyText"></span></p>
+  <button onclick="buyCandy()">🍬 Caramelo (50)</button>
+  <button onclick="closeShop()">Volver</button>
+</div>
+
+<script>
+/* ===================== */
+/* VARIABLES */
+const MAX_TEAM=6;
+let battleCount=0;
+let money=200;
+let items={candy:0};
+let playerTeam=[];
+let enemyParty=[];
+let rewardPool=[];
+let activePlayerIndex = 0;
+let currentPlayerPokemon;
+let currentEnemyPokemon;
+let currentEnemyIndex=0;
+let playerTurn=true;
+
+/* ===================== */
+/* TIPOS */
+const typeEffectiveness = {
+
+normal: {
+rock: 0.5,
+ghost: 0,
+steel: 0.5
+},
+
+fire: {
+grass: 2,
+ice: 2,
+bug: 2,
+steel: 2,
+fire: 0.5,
+water: 0.5,
+rock: 0.5,
+dragon: 0.5
+},
+
+water: {
+fire: 2,
+ground: 2,
+rock: 2,
+water: 0.5,
+grass: 0.5,
+dragon: 0.5
+},
+
+electric: {
+water: 2,
+flying: 2,
+electric: 0.5,
+grass: 0.5,
+dragon: 0.5,
+ground: 0
+},
+
+grass: {
+water: 2,
+ground: 2,
+rock: 2,
+fire: 0.5,
+grass: 0.5,
+poison: 0.5,
+flying: 0.5,
+bug: 0.5,
+dragon: 0.5,
+steel: 0.5
+},
+
+ice: {
+grass: 2,
+ground: 2,
+flying: 2,
+dragon: 2,
+fire: 0.5,
+water: 0.5,
+ice: 0.5,
+steel: 0.5
+},
+
+fighting: {
+normal: 2,
+ice: 2,
+rock: 2,
+dark: 2,
+steel: 2,
+poison: 0.5,
+flying: 0.5,
+psychic: 0.5,
+bug: 0.5,
+fairy: 0.5,
+ghost: 0
+},
+
+poison: {
+grass: 2,
+fairy: 2,
+poison: 0.5,
+ground: 0.5,
+rock: 0.5,
+ghost: 0.5,
+steel: 0
+},
+
+ground: {
+fire: 2,
+electric: 2,
+poison: 2,
+rock: 2,
+steel: 2,
+grass: 0.5,
+bug: 0.5,
+flying: 0
+},
+
+flying: {
+grass: 2,
+fighting: 2,
+bug: 2,
+electric: 0.5,
+rock: 0.5,
+steel: 0.5
+},
+
+psychic: {
+fighting: 2,
+poison: 2,
+psychic: 0.5,
+steel: 0.5,
+dark: 0
+},
+
+bug: {
+grass: 2,
+psychic: 2,
+dark: 2,
+fire: 0.5,
+fighting: 0.5,
+poison: 0.5,
+flying: 0.5,
+ghost: 0.5,
+steel: 0.5,
+fairy: 0.5
+},
+
+rock: {
+fire: 2,
+ice: 2,
+flying: 2,
+bug: 2,
+fighting: 0.5,
+ground: 0.5,
+steel: 0.5
+},
+
+ghost: {
+psychic: 2,
+ghost: 2,
+dark: 0.5,
+normal: 0
+},
+
+dragon: {
+dragon: 2,
+steel: 0.5,
+fairy: 0
+},
+
+dark: {
+psychic: 2,
+ghost: 2,
+fighting: 0.5,
+dark: 0.5,
+fairy: 0.5
+},
+
+steel: {
+ice: 2,
+rock: 2,
+fairy: 2,
+fire: 0.5,
+water: 0.5,
+electric: 0.5,
+steel: 0.5
+},
+
+fairy: {
+fighting: 2,
+dragon: 2,
+dark: 2,
+fire: 0.5,
+poison: 0.5,
+steel: 0.5
+}
+
+};
+
+/* ===================== */
+/* POKEMON */
+const allPokemon=[
+{
+name:"Charmander",
+type:"fire",
+hp:100,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/4.png",
+moves:[{name:"Ascuas",power:25,type:"fire"},{name:"Arañazo",power:15,type:"normal"}],
+evolvesTo:{
+name:"Charmeleon",
+type:"fire",
+hp:140,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/5.png",
+moves:[{name:"Llamarada",power:35,type:"fire"}],
+evolvesTo:{
+name:"Charizard",
+type:"fire",
+hp:200,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/6.png",
+moves:[{name:"Lanzallamas",power:45,type:"fire"}]
+}
+},
+evolveLevel:5
+},
+{
+name:"Vulpix",
+type:"fire",
+hp:90,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/37.png",
+moves:[{name:"Ascuas",power:20,type:"fire"}],
+evolvesTo:{
+name:"Ninetales",
+type:"fire",
+hp:160,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/38.png",
+moves:[{name:"Fuego Fatuo",power:40,type:"fire"}]
+},
+evolveLevel:5
+},
+{
+name:"Growlithe",
+type:"fire",
+hp:110,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/58.png",
+moves:[{name:"Mordisco",power:20,type:"normal"}],
+evolvesTo:{
+name:"Arcanine",
+type:"fire",
+hp:180,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/59.png",
+moves:[{name:"Envite Ígneo",power:50,type:"fire"}]
+},
+evolveLevel:5
+},
+{
+name:"Squirtle",
+type:"water",
+hp:120,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/7.png",
+moves:[{name:"Pistola Agua",power:20,type:"water"},{name:"Placaje",power:15,type:"normal"}],
+evolvesTo:{
+name:"Wartortle",
+type:"water",
+hp:160,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/8.png",
+moves:[{name:"Burbuja",power:30,type:"water"}],
+evolvesTo:{
+name:"Blastoise",
+type:"water",
+hp:220,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/9.png",
+moves:[{name:"Hidro Bomba",power:50,type:"water"}]
+}
+},
+evolveLevel:5
+},
+{
+name:"Psyduck",
+type:"water",
+hp:100,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/54.png",
+moves:[{name:"Confusión",power:25,type:"water"}],
+evolvesTo:{
+name:"Golduck",
+type:"water",
+hp:170,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/55.png",
+moves:[{name:"Surf",power:45,type:"water"}]
+},
+evolveLevel:5
+},
+{
+name:"Bulbasaur",
+type:"grass",
+hp:110,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1.png",
+moves:[{name:"Latigo Cepa",power:20,type:"grass"}],
+evolvesTo:{
+name:"Ivysaur",
+type:"grass",
+hp:150,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/2.png",
+moves:[{name:"Hoja Afilada",power:35,type:"grass"}],
+evolvesTo:{
+name:"Venusaur",
+type:"grass",
+hp:210,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/3.png",
+moves:[{name:"Rayo Solar",power:50,type:"grass"}]
+}
+},
+evolveLevel:5
+},
+{
+name:"Oddish",
+type:"grass",
+hp:90,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/43.png",
+moves:[{name:"Absorber",power:20,type:"grass"}],
+evolvesTo:{
+name:"Gloom",
+type:"grass",
+hp:140,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/44.png",
+moves:[{name:"Polen",power:30,type:"grass"}],
+evolvesTo:{
+name:"Vileplume",
+type:"grass",
+hp:200,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/45.png",
+moves:[{name:"Danza Pétalo",power:45,type:"grass"}]
+}
+},
+evolveLevel:5
+},
+{
+name:"Pikachu",
+type:"electric",
+hp:100,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/25.png",
+moves:[{name:"Impactrueno",power:25,type:"electric"}],
+evolvesTo:{
+name:"Raichu",
+type:"electric",
+hp:170,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/26.png",
+moves:[{name:"Rayo",power:45,type:"electric"}]
+},
+evolveLevel:5
+},
+{
+name:"Magnemite",
+type:"electric",
+hp:90,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/81.png",
+moves:[{name:"Chispa",power:20,type:"electric"}],
+evolvesTo:{
+name:"Magneton",
+type:"electric",
+hp:160,
+sprite:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/82.png",
+moves:[{name:"Electrocañón",power:45,type:"electric"}]
+},
+evolveLevel:5
+}
+];
+
+/* ===================== */
+/* CREAR POKEMON */
+function createPokemon(p){
+return {
+...p,
+level:1,
+xp:0,
+maxHp:p.hp,
+hp:p.hp,
+evolved:false
+};
+}
+
+/* ===================== */
+/* LOG */
+function log(t){
+let c=document.getElementById("battleConsole");
+if(c){c.innerHTML+=t+"<br>";c.scrollTop=c.scrollHeight;}
+}
+
+/* ===================== */
+/* STARTERS */
+function generateStarters(){
+let c=document.getElementById("starters");
+let s=[...allPokemon].sort(()=>Math.random()-0.5).slice(0,3);
+s.forEach(p=>{
+let d=document.createElement("div");
+d.className="card";
+d.innerHTML=p.name+"<br><img width='80' src='"+p.sprite+"'>";
+d.onclick=()=>chooseStarter(p);
+c.appendChild(d);
+});
+}
+
+function chooseStarter(p){
+playerTeam.push(createPokemon(p));
+document.getElementById("startMenu").classList.add("hidden");
+document.getElementById("mainMenu").classList.remove("hidden");
+}
+
+/* ===================== */
+/* COMBATE */
+function startBattle(){
+battleCount++;
+playerTurn=true;
+document.getElementById("battleConsole").innerHTML = ""; // limpiar consola
+
+enemyParty=[];
+let size=Math.min(1+Math.floor(battleCount/2),MAX_TEAM);
+for(let i=0;i<size;i++){
+let p=createPokemon(allPokemon[Math.floor(Math.random()*allPokemon.length)]);
+scaleEnemy(p);
+enemyParty.push(p);
+}
+
+currentEnemyIndex=0;
+currentEnemyPokemon=enemyParty[0];
+activePlayerIndex=0;
+currentPlayerPokemon=playerTeam[activePlayerIndex];
+
+// CURAR TODO EL EQUIPO
+playerTeam.forEach(p=>p.hp=p.maxHp);
+
+document.getElementById("battleScreen").classList.remove("hidden");
+document.getElementById("mainMenu").classList.add("hidden");
+
+log("⚔️ Empieza combate "+battleCount);
+updateUI();
+screenFade("battleScreen");
+}
+
+/* ===================== */
+/* IA ESCALADO */
+function scaleEnemy(p){
+let b=Math.floor(battleCount/2);
+p.level=1+b;
+p.maxHp+=b*10;
+p.hp=p.maxHp;
+p.moves.forEach(m=>m.power+=b*2);
+}
+
+/* ===================== */
+/* DAÑO CON TIPOS */
+function calcDamage(attacker, defender, move){
+let mult = 1;
+
+if(typeEffectiveness[move.type] &&
+   typeEffectiveness[move.type][defender.type] !== undefined){
+mult = typeEffectiveness[move.type][defender.type];
+}
+
+if(mult === 2) log("¡Supereficaz!");
+if(mult === 0.5) log("No es muy eficaz...");
+if(mult === 0) log("No afecta...");
+
+return move.power * mult;
+}
+
+/* ===================== */
+/* UPDATE UI */
+function updateUI(){
+if(!currentPlayerPokemon || !currentEnemyPokemon) return;
+
+document.getElementById("playerSprite").src=currentPlayerPokemon.sprite;
+document.getElementById("enemySprite").src=currentEnemyPokemon.sprite;
+document.getElementById("playerName").innerText=currentPlayerPokemon.name+" Lv"+currentPlayerPokemon.level;
+document.getElementById("enemyName").innerText=currentEnemyPokemon.name;
+setHP();
+
+let m=document.getElementById("moves");
+m.innerHTML="";
+
+currentPlayerPokemon.moves.forEach((mv,i)=>{
+let b=document.createElement("button");
+b.innerText=mv.name;
+b.onclick=()=>attack(i);
+m.appendChild(b);
+});
+
+// 🔹 Agregamos botones para cambiar Pokémon durante el combate
+playerTeam.forEach((p,i)=>{
+let btn = document.createElement("button");
+btn.innerText = "Cambiar a " + p.name;
+btn.onclick = ()=>switchPokemon(i);
+m.appendChild(btn);
+});
+}
+
+function hasAlivePokemon(){
+return playerTeam.some(p => p.hp > 0);
+}
+
+function setHP(){
+let p=(currentPlayerPokemon.hp/currentPlayerPokemon.maxHp)*100;
+let e=(currentEnemyPokemon.hp/currentEnemyPokemon.maxHp)*100;
+document.getElementById("playerHP").style.width=p+"%";
+document.getElementById("enemyHP").style.width=e+"%";
+document.getElementById("playerHP").className="hp-fill "+(p<25?"low":p<60?"mid":"high");
+document.getElementById("enemyHP").className="hp-fill "+(e<25?"low":e<60?"mid":"high");
+}
+
+/* ===================== */
+/* ATAQUES */
+function attack(i){
+if(currentPlayerPokemon.hp<=0) return;
+if(!playerTurn) return;
+playerTurn=false;
+let m=currentPlayerPokemon.moves[i];
+currentEnemyPokemon.hp-=calcDamage(currentPlayerPokemon,currentEnemyPokemon,m);
+hitEffect(document.getElementById("enemySprite"));
+log(currentPlayerPokemon.name+" usa "+m.name);
+if(currentEnemyPokemon.hp<=0){setTimeout(nextEnemy,400); return;}
+setTimeout(enemyTurn,700);
+attackFlash(currentEnemyPokemon.type);
+screenShake();
+}
+
+/* ===================== */
+/* ENEMY TURN */
+function enemyTurn(){
+let m=currentEnemyPokemon.moves[Math.floor(Math.random()*currentEnemyPokemon.moves.length)];
+currentPlayerPokemon.hp-=calcDamage(currentEnemyPokemon,currentPlayerPokemon,m);
+hitEffect(document.getElementById("playerSprite"));
+log(currentEnemyPokemon.name+" usa "+m.name);
+if(currentPlayerPokemon.hp<=0){
+log(currentPlayerPokemon.name+" se debilita 💀");
+
+
+if(!hasAlivePokemon()){
+lose();
+return;
+}
+
+// buscar siguiente Pokémon vivo
+let next = playerTeam.findIndex(p => p.hp > 0);
+switchPokemon(next);
+return;
+}
+playerTurn=true;
+attackFlash(currentPlayerPokemon.type);
+screenShake();
+updateUI();
+}
+
+/* ===================== */
+/* CAMBIO ENEMIGO */
+function nextEnemy(){
+currentEnemyIndex++;
+if(currentEnemyIndex>=enemyParty.length){win(); return;}
+currentEnemyPokemon=enemyParty[currentEnemyIndex];
+log("Siguiente Pokémon rival: "+currentEnemyPokemon.name);
+// 🔹 Reactivar turno del jugador
+playerTurn=true;
+updateUI();
+}
+
+/* ===================== */
+/* WIN / REWARD */
+function win(){
+money+=100;
+rewardPool=enemyParty.filter(p=>!playerTeam.some(x=>x.name===p.name));
+showRewardScreen();
+}
+
+/* ===================== */
+/* REWARD */
+function showRewardScreen(){
+document.getElementById("battleScreen").classList.add("hidden");
+document.getElementById("rewardScreen").classList.remove("hidden");
+let c=document.getElementById("rewardList");
+c.innerHTML="";
+if(rewardPool.length===0){c.innerHTML="<p>No hay nuevos Pokémon</p>"; return;}
+rewardPool.forEach((p,i)=>{
+let d=document.createElement("div");
+d.innerHTML=`<b>${p.name}</b><br><img width="70" src="${p.sprite}"><button onclick="takeReward(${i})">Capturar</button>`;
+c.appendChild(d);
+});
+}
+
+function takeReward(i){
+if(playerTeam.length>=MAX_TEAM) return;
+
+let base = rewardPool[i];
+
+// 🔥 BUSCAR POKÉMON ORIGINAL (IMPORTANTE)
+let original = allPokemon.find(p=>p.name===base.name);
+
+// crear desde base original, no del enemigo debilitado
+let p = createPokemon(original);
+
+// asegurar vida completa real
+p.maxHp = original.hp;
+p.hp = original.hp;
+
+playerTeam.push(p);
+
+log("📥 Capturaste a "+p.name);
+popEffect(document.getElementById("rewardScreen"));
+
+closeReward();
+}
+
+function skipReward(){closeReward();}
+
+function closeReward(){
+document.getElementById("rewardScreen").classList.add("hidden");
+document.getElementById("mainMenu").classList.remove("hidden");
+endBattle();
+}
+
+/* ===================== */
+/* CAMBIO POKEMON JUGADOR */
+function switchPokemon(index){
+let p = playerTeam[index];
+if(!p || p.hp <= 0){
+hitEffect(document.getElementById("playerSprite"));
+log("Ese Pokémon está debilitado 💀");
+return;
+}
+
+activePlayerIndex = index;
+currentPlayerPokemon = p;
+
+log("🔄 Cambias a "+p.name);
+
+// el enemigo ataca después del cambio
+playerTurn = false;
+setTimeout(enemyTurn, 500);
+
+updateUI();
+}
+
+/* ===================== */
+/* EVOLUCIONES */
+function gainXP(p,xp){
+p.xp+=xp;
+while(p.xp>=p.level*20){
+p.xp-=p.level*20;
+p.level++;
+p.maxHp+=10;
+p.hp=p.maxHp;
+log(p.name+" sube a Lv "+p.level);
+checkEvolution(p);
+}
+}
+
+function checkEvolution(p){
+if(p.evolved) return;
+if(!p.evolvesTo) return;
+if(p.level<p.evolveLevel) return;
+log("✨ Evolución...");
+setTimeout(()=>{
+p.name = p.evolvesTo.name;
+p.sprite = p.evolvesTo.sprite;
+p.maxHp = p.evolvesTo.hp;
+p.hp = p.maxHp;
+p.evolved = true;
+
+updateUI();
+renderTeam();
+
+// 🔥 animación en menú también
+let index = playerTeam.findIndex(x => x === p);
+menuEvolveFX(index);
+
+log("🔥 Evolucionó a " + p.name);
+},800);
+}
+
+/* ===================== */
+/* PANTALLA POKEMON */
+function openPokemonScreen(){
+document.getElementById("mainMenu").classList.add("hidden");
+document.getElementById("pokemonScreen").classList.remove("hidden");
+renderTeam();
+screenFade("pokemonScreen");
+}
+
+function renderTeam(){
+let c=document.getElementById("teamList");
+c.innerHTML="";
+playerTeam.forEach((p,i)=>{
+let dead=p.hp<=0?"💀":"";
+let div=document.createElement("div");
+div.innerHTML=`
+<b>${p.name} ${dead}</b><br>
+Lv ${p.level} HP ${p.hp}/${p.maxHp}<br>
+<button onclick="switchPokemon(${i})">Cambiar</button>
+<button onclick="useCandy(${i})">🍬 Usar caramelo</button>
+<hr>
+`;
+c.appendChild(div);
+});
+document.getElementById("candyCount").innerText=items.candy;
+}
+
+function useCandy(index){
+if(items.candy<=0){log("No tienes caramelos"); return;}
+let p=playerTeam[index];
+items.candy--;
+gainXP(p,20);
+log("🍬 "+p.name+" gana experiencia");
+renderTeam();
+}
+
+function closePokemonScreen(){
+document.getElementById("pokemonScreen").classList.add("hidden");
+document.getElementById("mainMenu").classList.remove("hidden");
+}
+
+/* ===================== */
+/* LOSE */
+function lose(){log("Perdiste 💀"); setTimeout(endBattle,1000);}
+function endBattle(){
+document.getElementById("battleScreen").classList.add("hidden");
+document.getElementById("mainMenu").classList.remove("hidden");
+}
+
+/* ===================== */
+/* SHOP */
+function openShop(){
+document.getElementById("mainMenu").classList.add("hidden");
+document.getElementById("shopScreen").classList.remove("hidden");
+updateShopUI();
+screenFade("shopScreen");
+}
+
+function closeShop(){
+document.getElementById("shopScreen").classList.add("hidden");
+document.getElementById("mainMenu").classList.remove("hidden");
+}
+
+function updateShopUI(){
+document.getElementById("moneyText").innerText=money;
+}
+
+function buyCandy(){
+if(money<50) return;
+money-=50;
+items.candy++;
+updateShopUI();
+log("Compraste 🍬");
+}
+
+/* ===================== */
+/* ANIMACIONES (NO ROMPE NADA) */
+
+function hitEffect(el){
+if(!el) return;
+el.classList.add("shake","hitFlash");
+setTimeout(()=>el.classList.remove("shake","hitFlash"),300);
+}
+
+function popEffect(el){
+if(!el) return;
+el.classList.add("pop");
+setTimeout(()=>el.classList.remove("pop"),200);
+}
+
+function screenFade(id){
+let el=document.getElementById(id);
+if(el){
+el.classList.add("fadeIn");
+setTimeout(()=>el.classList.remove("fadeIn"),400);
+}
+}
+
+/* ===================== */
+/* PRO FX SYSTEM */
+
+function screenShake(){
+document.body.classList.add("screenShake");
+setTimeout(()=>document.body.classList.remove("screenShake"),400);
+}
+
+function attackFlash(type){
+let screen=document.getElementById("battleContainer");
+
+if(!screen) return;
+
+if(type==="fire"){
+screen.classList.add("flash-red");
+}
+else if(type==="water"){
+screen.classList.add("flash-blue");
+}
+else{
+screen.classList.add("screenShake");
+}
+
+setTimeout(()=>{
+screen.classList.remove("flash-red","flash-blue","screenShake");
+},300);
+}
+
+function evolveFX(sprite){
+if(!sprite) return;
+sprite.classList.add("evolve");
+setTimeout(()=>sprite.classList.remove("evolve"),1000);
+}
+
+function menuEvolveFX(index){
+let el = document.querySelectorAll("#teamList img")[index];
+if(!el) return;
+
+el.classList.add("evolve");
+
+setTimeout(()=>el.classList.remove("evolve"),1000);
+}
+
+/* ===================== */
+/* START */
+generateStarters();
+</script>
+
+</body>
+</html>
